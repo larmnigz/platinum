@@ -1,0 +1,2 @@
+# platinum
+Roblox universal script
