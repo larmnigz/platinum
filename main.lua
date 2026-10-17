@@ -4,6 +4,7 @@ local Rayfield = loadstring(game:HttpGet("https://sirius.menu/gen2"))()
 --Services
 local Players = game:GetService("Players")
 local Teams = game:GetService("Teams")
+local RunService = game:GetService("RunService")
 local Workspace = game.Workspace
 
 --Funcs
@@ -98,6 +99,9 @@ local activePlayerHighlights = {}
 local teamESPEnabled = false
 local playerESPEnabled = false
 local Player = Players.LocalPlayer
+local Clip = true
+local NoclipParts = {}
+local Noclipping
 
 --------
 --Main--
@@ -165,8 +169,64 @@ playertab:CreateSlider({
     end,
 })
 
+local noclip = playertab:CreateToggle({
+    Name = "Noclip",
+    Flag = "NoclipToggle",
+    CurrentValue = true,
+
+    Callback = function(value)
+        Clip = value
+
+        if Noclipping then
+            Noclipping:Disconnect()
+            Noclipping = nil
+        end
+
+        if value then
+            NoclipParts = {}
+
+            Noclipping = RunService.Stepped:Connect(function()
+                if Player.Character then
+                    for _, child in pairs(
+                        Player.Character:GetDescendants()
+                    ) do
+                        if child:IsA("BasePart")
+                            and child.Name ~= floatName then
+
+                            if NoclipParts[child] == nil then
+                                NoclipParts[child] = child.CanCollide
+                            end
+
+                            child.CanCollide = false
+                        end
+                    end
+                end
+            end)
+        else
+            for part, originalState in pairs(NoclipParts) do
+                if part and part.Parent then
+                    part.CanCollide = originalState
+                end
+            end
+
+            NoclipParts = {}
+        end
+    end,
+})
+
+noclip:Set(false)
+
 playertab:CreateButton({
-    name = "Break Joints",
+    name = "Reset character",
+    callback = function()
+        game.Players.LocalPlayer.Character.Head:Destroy()
+    end,
+})
+
+playertab:CreateDivider({ text = "Character Functions" })
+
+playertab:CreateButton({
+    name = "BreakJoints()",
     callback = function()
         if Player.Character then
             Player.Character:BreakJoints()
@@ -175,11 +235,33 @@ playertab:CreateButton({
 })
 
 playertab:CreateButton({
-    name = "Sit",
+    name = "Sit()",
     callback = function()
         if Player.Character and Player.Character:FindFirstChild("Humanoid") then
             Player.Character.Humanoid.Sit = true
         end
+    end,
+})
+
+
+
+playertab:CreateInput({
+    name = "Max players",
+    numeric = true,
+    value = "16",
+    placeholder = "Enter a number",
+    callback = function(text)
+        print("Committed:", text)
+    end,
+})
+
+playertab:CreateInput({
+    name = "Max players",
+    numeric = true,
+    value = "16",
+    placeholder = "Enter a number",
+    callback = function(text)
+        print("Committed:", text)
     end,
 })
 
@@ -195,7 +277,7 @@ utilitytab:CreateButton({
 utilitytab:CreateButton({
     name = "RemoteSpy",
     callback = function()
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/infyiff/backup/main/SimpleSpyV3/main.lua"))()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/infyiff/backup/main/SimpleSpyV3/main.lua"))() 
     end,
 })
 
@@ -351,10 +433,10 @@ local function highlighteligable(player, character)
     local highlight = Instance.new("Highlight")
     highlight.Name = "TeamESP"
     highlight.OutlineColor = player.TeamColor.Color
-    highlight.FillColor = player.TeamColor.Color
+    highlight.FillColor = player.TeamColor.Color --dont use teamcolor only reminder nigga granny
     highlight.FillTransparency = 0.6
     highlight.Adornee = character
-    highlight.Parent = character
+    highlight.Parent = character 
 
     activeTeamHighlights[player] = highlight
 end
@@ -466,3 +548,15 @@ end)
 
 --Server
 
+servertab:CreateButton({
+    name = "SaveInstance()",
+    callback = function()
+        if saveinstance then
+		window:Notify({ title = "Saving game", content = "Please wait.." })
+		saveinstance()
+		window:Notify({ title = "Done!", content = "Game finished downloading." })
+	else
+		window:Notify({ title = "Failure", content = "Your executor doesnt support this." })
+	end
+    end,
+})
