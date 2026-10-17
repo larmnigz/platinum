@@ -24,35 +24,79 @@ local function getTeamNames()
     return names -- same as above o algo
 end
 
-local function highlighteligable(player, character)
-    -- 1. Check if the Team ESP toggle flag is actually turned ON in Rayfield
-    if Rayfield.Flags["TeamEspToggle"] and Rayfield.Flags["TeamEspToggle"].CurrentValue == true then
-        
-        -- 2. Check if they are part of the selected teams
-        if table.find(selectedTeamInstances, player.Team) then
-            -- Clean up old highlights if they exist on this player
-            if activeTeamHighlights[player] then 
-                activeTeamHighlights[player]:Destroy() 
-            end
+local function refreshTeamESP()
 
-            -- 3. Create the new highlight for their new character
+    for _, hl in pairs(activeTeamHighlights) do
+        if hl then
+            hl:Destroy()
+        end
+    end
+    table.clear(activeTeamHighlights)
+
+    if not teamESPEnabled then
+        return
+    end
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= Player
+            and player.Team
+            and table.find(selectedTeamInstances, player.Team)
+            and player.Character then
+
+            local character = player.Character
             local lightbox = Instance.new("Highlight")
+
             lightbox.OutlineColor = player.TeamColor.Color
             lightbox.FillColor = player.TeamColor.Color
             lightbox.FillTransparency = 0.6
-            
             lightbox.Parent = character
+
             activeTeamHighlights[player] = lightbox
         end
     end
 end
 
+local function clearPlayerHighlights()
+    for player, highlight in pairs(activePlayerHighlights) do
+        if highlight then
+            highlight:Destroy()
+        end
+
+        activePlayerHighlights[player] = nil
+    end
+end
+
+function refreshPlayerESP()
+    clearPlayerHighlights()
+
+    if not playerESPEnabled then
+        return
+    end
+
+    for _, target in ipairs(selectedPlayerInstances) do
+        if target ~= Player and target.Character then
+            local highlight = Instance.new("Highlight")
+
+            highlight.Name = "TargetESP"
+            highlight.FillColor = Color3.fromRGB(255, 0, 0)
+            highlight.FillTransparency = 0.6
+            highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+            highlight.Adornee = target.Character
+            highlight.Parent = target.Character
+
+            activePlayerHighlights[target] = highlight
+        end
+    end
+end
 
 --Vars
 
 local selectedTeamInstances = {}
 local activeTeamHighlights = {}
-local selectedPlayer = nil
+local selectedPlayerInstances = {}
+local activePlayerHighlights = {}
+local teamESPEnabled = false
+local playerESPEnabled = false
 local Player = Players.LocalPlayer
 
 --------
@@ -63,6 +107,7 @@ local window = Rayfield:CreateWindow({
     name = "Platinum",
     subtitle = "By PluvWaffen.cc",
     sidebarLayout = true,
+    theme = "cobalt",
 })
 
 local systemtab = window:CreateTab({ name = "System", icon = 93364949241311 })
@@ -154,122 +199,197 @@ utilitytab:CreateButton({
     end,
 })
 
---Visual
+-- Visual
+
+local function clearPlayerHighlights()
+    for player, highlight in pairs(activePlayerHighlights) do
+        if highlight then
+            highlight:Destroy()
+        end
+        activePlayerHighlights[player] = nil
+    end
+end
+
+local function refreshPlayerESP()
+    clearPlayerHighlights()
+
+    if not playerESPEnabled then
+        return
+    end
+
+    for _, target in ipairs(selectedPlayerInstances) do
+        if target ~= Player and target.Character then
+            local highlight = Instance.new("Highlight")
+            highlight.Name = "TargetESP"
+            highlight.FillColor = Color3.fromRGB(255, 0, 0)
+            highlight.FillTransparency = 0.6
+            highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+            highlight.Adornee = target.Character
+            highlight.Parent = target.Character
+
+            activePlayerHighlights[target] = highlight
+        end
+    end
+end
 
 local PlayerDropdown = visualtab:CreateDropdown({
     Name = "Players",
     Options = getPlayerNames(),
     CurrentOption = {},
-    MultipleOptions = false,
+    MultipleOptions = true,
+
     Callback = function(selected)
-        local selectedName = typeof(selected) == "table" and selected[1] or selected
-        
-        selectedPlayerInstance = Players:FindFirstChild(selectedName)
-        print("Target locked on object:", selectedPlayerInstance)
+        table.clear(selectedPlayerInstances)
+
+        if typeof(selected) == "table" then
+            for _, playerName in ipairs(selected) do
+                local target = Players:FindFirstChild(playerName)
+
+                if target then
+                    table.insert(selectedPlayerInstances, target)
+                end
+            end
+        elseif typeof(selected) == "string" then
+            local target = Players:FindFirstChild(selected)
+
+            if target then
+                table.insert(selectedPlayerInstances, target)
+            end
+        end
+
+        print("Selected players:", #selectedPlayerInstances)
+
+        if playerESPEnabled then
+            refreshPlayerESP()
+        end
     end,
 })
 
 local TeamDropdown = visualtab:CreateDropdown({
-    Name = "Teams",                
-    MultiSelect = true,            
-    Options = getTeamNames(),      
-    CurrentOption = {},            
-    Callback = function(selected)  
-        -- Clear our previous object list so we don't hold onto unselected teams
+    Name = "Teams",
+    MultiSelect = true,
+    Options = getTeamNames(),
+    CurrentOption = {},
+
+    Callback = function(selected)
         table.clear(selectedTeamInstances)
-        
-        -- Loop through the text strings Rayfield gave us
-        for _, teamName in ipairs(selected) do
-            -- Find the actual Team Object in the Teams service using the string name
-            local teamInstance = Teams:FindFirstChild(teamName)
-            
+
+        if typeof(selected) == "table" then
+            for _, teamName in ipairs(selected) do
+                local teamInstance = Teams:FindFirstChild(teamName)
+
+                if teamInstance then
+                    table.insert(selectedTeamInstances, teamInstance)
+                end
+            end
+        elseif typeof(selected) == "string" then
+            local teamInstance = Teams:FindFirstChild(selected)
+
             if teamInstance then
                 table.insert(selectedTeamInstances, teamInstance)
             end
         end
-        
-        print("Selected Team Instances:", selectedTeamInstances)
-    end,
-})
 
-local tesptoggle = visualtab:CreateToggle({
-    name = "Target ESP",
-    flag = "TargetEsp",
-    value = false,
-    callback = function(value)
-        if value == true then
-             local character = selectedPlayerInstance.Character
-            if not character then
-                print("Error: Target character not found!")
-                return
-            end
+        print("Selected teams:", #selectedTeamInstances)
 
-            if Espbox then Espbox:Destroy() end
-
-            Espbox = Instance.new("Highlight")
-            Espbox.FillColor = Color3.fromRGB(255, 0, 0)
-            Espbox.FillTransparency = 0.6
-            Espbox.OutlineColor = Color3.fromRGB(255, 255, 255)
-            
-            Espbox.Parent = character
-            print("esp+")
-            
-        else
-            if Espbox then
-                Espbox:Destroy()
-                Espbox = nil --memory
-                print("killed highlight")
-            else
-                print("No active highlight found to destroy.")
-            end
+        if teamESPEnabled then
+            refreshTeamESP()
         end
     end,
 })
 
-tesptoggle:Set(false)
+local tesptoggle = visualtab:CreateToggle({
+    Name = "Target ESP",
+    Flag = "TargetEsp",
+    CurrentValue = false,
+
+    Callback = function(value)
+        playerESPEnabled = value
+
+        if playerESPEnabled then
+            if #selectedPlayerInstances == 0 then
+                warn("Select at least one player first!")
+                playerESPEnabled = false
+                clearPlayerHighlights()
+                return
+            end
+
+            refreshPlayerESP()
+            print("Target ESP activated.")
+        else
+            clearPlayerHighlights()
+            print("Target ESP deactivated.")
+        end
+    end,
+})
+
+local function highlighteligable(player, character)
+    if player == Player then
+        return
+    end
+
+    if not teamESPEnabled then
+        return
+    end
+
+    if not player.Team
+        or not table.find(selectedTeamInstances, player.Team) then
+
+        if activeTeamHighlights[player] then
+            activeTeamHighlights[player]:Destroy()
+            activeTeamHighlights[player] = nil
+        end
+
+        return
+    end
+
+    if activeTeamHighlights[player] then
+        activeTeamHighlights[player]:Destroy()
+        activeTeamHighlights[player] = nil
+    end
+
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "TeamESP"
+    highlight.OutlineColor = player.TeamColor.Color
+    highlight.FillColor = player.TeamColor.Color
+    highlight.FillTransparency = 0.6
+    highlight.Adornee = character
+    highlight.Parent = character
+
+    activeTeamHighlights[player] = highlight
+end
+
+function refreshTeamESP()
+    for player, highlight in pairs(activeTeamHighlights) do
+        if highlight then
+            highlight:Destroy()
+        end
+        activeTeamHighlights[player] = nil
+    end
+
+    if not teamESPEnabled then
+        return
+    end
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player.Character then
+            highlighteligable(player, player.Character)
+        end
+    end
+end
 
 local tteamesptoggle = visualtab:CreateToggle({
     Name = "Team ESP",
     Flag = "TeamEsp",
     CurrentValue = false,
-    Callback = function(Value)
-        if Value == true then
-            -- Clear out any lingering old highlights just in case
-            for _, hl in pairs(activeTeamHighlights) do
-                if hl then hl:Destroy() end
-            end
-            table.clear(activeTeamHighlights)
 
-            -- Loop through EVERY player in the server
-            for _, player in ipairs(Players:GetPlayers()) do
-                -- Check if this player belongs to one of our selected team objects
-                if table.find(selectedTeamInstances, player.Team) then
-                    local character = player.Character
-                    
-                    -- Make sure their character exists in Workspace before adding the visual
-                    if character then
-                        local lightbox = Instance.new("Highlight")
-                        
-                        -- Match the highlight outline color to their actual Team Color!
-                        lightbox.OutlineColor = player.TeamColor.Color
-                        lightbox.FillColor = player.TeamColor.Color
-                        lightbox.FillTransparency = 0.6
-                        
-                        lightbox.Parent = character
-                        
-                        -- Save it to our tracking table bound to the player
-                        activeTeamHighlights[player] = lightbox
-                    end
-                end
-            end
+    Callback = function(value)
+        teamESPEnabled = value
+        refreshTeamESP()
+
+        if teamESPEnabled then
             print("Team ESP activated.")
-            
         else
-            -- Turn off: Clean up all team highlights globally
-            for player, hl in pairs(activeTeamHighlights) do
-                if hl then hl:Destroy() end
-            end
-            table.clear(activeTeamHighlights)
             print("Team ESP deactivated.")
         end
     end,
@@ -278,22 +398,71 @@ local tteamesptoggle = visualtab:CreateToggle({
 local function updateTeamDropdown()
     TeamDropdown:Refresh(getTeamNames(), true)
 end
+
 Teams.ChildAdded:Connect(updateTeamDropdown)
 Teams.ChildRemoved:Connect(updateTeamDropdown)
-
-tteamesptoggle:Set(false)
 
 local function monitorPlayer(player)
     player.CharacterAdded:Connect(function(character)
         task.defer(function()
+            if playerESPEnabled
+                and table.find(selectedPlayerInstances, player) then
+
+                if activePlayerHighlights[player] then
+                    activePlayerHighlights[player]:Destroy()
+                    activePlayerHighlights[player] = nil
+                end
+
+                local highlight = Instance.new("Highlight")
+                highlight.Name = "TargetESP"
+                highlight.FillColor = Color3.fromRGB(255, 0, 0)
+                highlight.FillTransparency = 0.6
+                highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+                highlight.Adornee = character
+                highlight.Parent = character
+
+                activePlayerHighlights[player] = highlight
+            end
+
             highlighteligable(player, character)
         end)
+    end)
+
+    player:GetPropertyChangedSignal("Team"):Connect(function()
+        if player.Character then
+            highlighteligable(player, player.Character)
+        end
     end)
 end
 
 for _, player in ipairs(Players:GetPlayers()) do
     monitorPlayer(player)
 end
-Players.PlayerAdded:Connect(monitorPlayer)
+
+Players.PlayerAdded:Connect(function(player)
+    monitorPlayer(player)
+    PlayerDropdown:Refresh(getPlayerNames(), true)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    if activePlayerHighlights[player] then
+        activePlayerHighlights[player]:Destroy()
+        activePlayerHighlights[player] = nil
+    end
+
+    if activeTeamHighlights[player] then
+        activeTeamHighlights[player]:Destroy()
+        activeTeamHighlights[player] = nil
+    end
+
+    for i = #selectedPlayerInstances, 1, -1 do
+        if selectedPlayerInstances[i] == player then
+            table.remove(selectedPlayerInstances, i)
+        end
+    end
+
+    PlayerDropdown:Refresh(getPlayerNames(), true)
+end)
 
 --Server
+
