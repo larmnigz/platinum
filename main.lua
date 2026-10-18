@@ -124,50 +124,23 @@ local servertab = window:CreateTab({ name = "Server", icon = 93364949241311 })
 
 local console = systemtab:CreateConsole({
     name = "Console",
-    text = [[print("Hello world")]],
+    text = [[Platinum 1.0.3)]],
     follow = true,
     maxLines = 300,
 })
 
 --Player
-playertab:CreateSlider({
-    name = "Walkspeed",
-    range = { 0, 1000 },
-    increment = 1,
-    value = 16,
-    suffix = "°",
-    callback = function(value)
-        if Player.Character and Player.Character:FindFirstChild("Humanoid") then
-            Player.Character.Humanoid.WalkSpeed = value
-        end
+
+playertab:CreateDivider({ text = "Player instance Functions" })
+
+playertab:CreateButton({
+    name = "Log UserId",
+    callback = function()
+        window:Notify({ title = "Logged User Id", content = tostring(Player.UserId) })
     end,
 })
 
-playertab:CreateSlider({
-    name = "Jumppower",
-    range = { 0, 1000 },
-    increment = 1,
-    value = 16,
-    suffix = "°",
-    callback = function(value)
-        if Player.Character and Player.Character:FindFirstChild("Humanoid") then
-            Player.Character.Humanoid.JumpPower = value
-        end
-    end,
-})
-
-playertab:CreateSlider({
-    name = "Field of view",
-    range = { 70, 120 },
-    increment = 1,
-    value = 90,
-    suffix = "°",
-    callback = function(value)
-        if Workspace.CurrentCamera then
-            Workspace.CurrentCamera.FieldOfView = value
-        end
-    end,
-})
+playertab:CreateDivider({ text = "Character Functions" })
 
 local noclip = playertab:CreateToggle({
     Name = "Noclip",
@@ -216,14 +189,25 @@ local noclip = playertab:CreateToggle({
 
 noclip:Set(false)
 
+playertab:CreateSlider({
+    name = "Field of view",
+    range = { 70, 120 },
+    increment = 1,
+    value = 90,
+    suffix = "°",
+    callback = function(value)
+        if Workspace.CurrentCamera then
+            Workspace.CurrentCamera.FieldOfView = value
+        end
+    end,
+})
+
 playertab:CreateButton({
-    name = "Reset character",
+    name = "ResetCharacter()",
     callback = function()
         game.Players.LocalPlayer.Character.Head:Destroy()
     end,
 })
-
-playertab:CreateDivider({ text = "Character Functions" })
 
 playertab:CreateButton({
     name = "BreakJoints()",
@@ -243,27 +227,48 @@ playertab:CreateButton({
     end,
 })
 
-
+playertab:CreateDivider({ text = "Humanoid Functions" })
 
 playertab:CreateInput({
-    name = "Max players",
+    name = "Walkspeed",
     numeric = true,
     value = "16",
     placeholder = "Enter a number",
     callback = function(text)
-        print("Committed:", text)
+        if Player.Character and Player.Character:FindFirstChild("Humanoid") then
+            Player.Character.Humanoid.WalkSpeed = text
+        end
     end,
 })
 
 playertab:CreateInput({
-    name = "Max players",
+    name = "Jumppower",
     numeric = true,
     value = "16",
     placeholder = "Enter a number",
     callback = function(text)
-        print("Committed:", text)
+        if Player.Character and Player.Character:FindFirstChild("Humanoid") then
+            Player.Character.Humanoid.JumpPower = text
+        end
     end,
 })
+
+local platformstand = playertab:CreateToggle({
+    name = "Platformstand()",
+    flag = "Platformstand",
+    value = false,
+    callback = function(value)
+    if value == true then
+        Player.Character.Humanoid.PlatformStand = true
+    else
+        Player.Character.Humanoid.PlatformStand = false
+        end
+    end,
+})
+
+platformstand:Set(false)
+
+
 
 --Utilities
 
@@ -339,7 +344,7 @@ local PlayerDropdown = visualtab:CreateDropdown({
             end
         end
 
-        print("Selected players:", #selectedPlayerInstances)
+        console:Append("Selected players:", #selectedPlayerInstances)
 
         if playerESPEnabled then
             refreshPlayerESP()
@@ -372,7 +377,7 @@ local TeamDropdown = visualtab:CreateDropdown({
             end
         end
 
-        print("Selected teams:", #selectedTeamInstances)
+        console:Append("Selected teams:", #selectedTeamInstances)
 
         if teamESPEnabled then
             refreshTeamESP()
@@ -397,10 +402,10 @@ local tesptoggle = visualtab:CreateToggle({
             end
 
             refreshPlayerESP()
-            print("Target ESP activated.")
+            console:Append("Target ESP activated.")
         else
             clearPlayerHighlights()
-            print("Target ESP deactivated.")
+            console:Append("Target ESP deactivated.")
         end
     end,
 })
@@ -470,9 +475,9 @@ local tteamesptoggle = visualtab:CreateToggle({
         refreshTeamESP()
 
         if teamESPEnabled then
-            print("Team ESP activated.")
+            console:Append("Team ESP activated.")
         else
-            print("Team ESP deactivated.")
+            console:Append("Team ESP deactivated.")
         end
     end,
 })
