@@ -434,7 +434,7 @@ utilitytab:CreateButton({
 
     callback = function()
         loadstring(game:HttpGet(
-            "https://raw.githubusercontent.com/infyiff/backup/main/SimpleSpyV3/main.lua"
+            "https://gitlab.com/upio/cobalt/-/releases/permalink/latest/downloads/Cobalt.luau"
         ))()
     end,
 })
