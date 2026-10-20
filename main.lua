@@ -14,12 +14,20 @@ local Players = game:GetService("Players")
 local Teams = game:GetService("Teams")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
 
 --// Variables
 local Player = Players.LocalPlayer
+local mouse = Player:GetMouse()
+local Camera = Workspace.CurrentCamera
+local AimbotConnection
+local RmbLockEnabled = false
+local RmbLockConnection = nil
 
 local selectedTeamInstances = {}
+local PlayerAimbotInstances = {}
 local activeTeamHighlights = {}
+local selectedlimb = "Head"
 
 local selectedPlayerInstances = {}
 local activePlayerHighlights = {}
@@ -236,9 +244,9 @@ local servertab = window:CreateTab({
 
 local console = systemtab:CreateConsole({
     name = "Console",
-    text = [[Platinum Console 1.0.0]],
+    text = [[Platinum Console 1.0.1]],
     follow = true,
-    maxLines = 300,
+    maxLines = 400,
 })
 
 systemtab:CreateButton({
@@ -255,10 +263,35 @@ systemtab:CreateButton({
     end,
 })
 
+systemtab:CreateButton({
+    name = "Rejoin",
+    callback = function()
+            local data = nil
+    if parseBoolean(args[1], false) == true then
+        if queueteleport then
+            if speaker.Character then
+                data = speaker.Character:GetPivot()
+                queueteleport(teleportRespawnHandler)
+            end
+        else
+            console:Append("missing queue_on_teleport")
+        end
+    end
+
+    if #Players:GetPlayers() <= 1 then
+        Players.LocalPlayer:Kick("\nRejoining...")
+        task.wait(0.3)
+        TeleportService:Teleport(PlaceId, Players.LocalPlayer, data)
+    else
+        TeleportService:TeleportToPlaceInstance(PlaceId, JobId, Players.LocalPlayer, nil, data)
+    end
+    end,
+})
+
 --// PLAYER
 
 playertab:CreateDivider({
-    text = "Player instance Functions"
+    text = "Player instance Functions" --PIF
 })
 
 playertab:CreateButton({
@@ -272,7 +305,7 @@ playertab:CreateButton({
 })
 
 playertab:CreateDivider({
-    text = "Character Functions"
+    text = "Character Functions" --CF
 })
 
 local noclip = playertab:CreateToggle({
@@ -401,6 +434,17 @@ playertab:CreateInput({
     end,
 })
 
+playertab:CreateButton({
+    name = "Animation:Destroy()",
+    callback = function()
+    if Player.Character.Animate.Parent == Player.Character then
+        Player.Character.Animate:Destroy()
+        else
+        console:Append("No animate script found")
+        end
+    end,
+})
+
 local platformstand = playertab:CreateToggle({
     name = "Platformstand()",
     flag = "Platformstand",
@@ -416,6 +460,185 @@ local platformstand = playertab:CreateToggle({
 })
 
 platformstand:Set(false)
+
+playertab:CreateDivider({
+    text = "Camera Functions" --CF
+})
+
+local PlayerAimbotDropdown = playertab:CreateDropdown({
+    Name = "Target Player List",
+    Options = getPlayerNames(),
+    CurrentOption = {},
+    MultipleOptions = false,
+
+    Callback = function(selected)
+        table.clear(PlayerAimbotInstances)
+
+        if typeof(selected) == "table" then
+            for _, playerName in ipairs(selected) do
+                local playerInstance = Players:FindFirstChild(playerName)
+
+                if playerInstance then
+                    table.insert(PlayerAimbotInstances, playerInstance)
+                end
+            end
+
+        elseif typeof(selected) == "string" then
+            local playerInstance = Players:FindFirstChild(selected)
+
+            if playerInstance then
+                table.insert(PlayerAimbotInstances, playerInstance)
+            end
+        end
+
+        console:Append(
+            "Player List selected: " .. tostring(#PlayerAimbotInstances) .. " player(s)"
+        )
+    end,
+})
+
+local Selectlimbs = playertab:CreateDropdown({
+    Name = "Target Player Parts",
+    Options = { "Head", "HumanoidRootPart" },
+    CurrentOption = { "Head" },
+    MultipleOptions = false,
+
+    Callback = function(selected)
+        if typeof(selected) == "table" then
+            selectedlimb = selected[1]
+        elseif typeof(selected) == "string" then
+            selectedlimb = selected
+        end
+
+        console:Append(
+            "Target part: " .. tostring(selectedlimb)
+        )
+    end,
+})
+
+local aimbottoggle = playertab:CreateToggle({
+    Name = "Target aimbot",
+    Flag = "TargetAimbot",
+    CurrentValue = false,
+
+    Callback = function(value)
+        if AimbotConnection then
+            AimbotConnection:Disconnect()
+            AimbotConnection = nil
+        end
+
+        if not value then
+            return
+        end
+
+        AimbotConnection = RunService.RenderStepped:Connect(function()
+            local targetPlayer = PlayerAimbotInstances[1]
+
+            if not targetPlayer then
+                return
+            end
+
+            local character = targetPlayer.Character
+            if not character then
+                return
+            end
+
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            if not humanoid or humanoid.Health <= 0 then
+                return
+            end
+
+            local targetPart = character:FindFirstChild(selectedlimb)
+
+            if not targetPart then
+                return
+            end
+
+            Workspace.CurrentCamera.CFrame = CFrame.lookAt(
+                Workspace.CurrentCamera.CFrame.Position,
+                targetPart.Position
+            )
+        end)
+    end,
+})
+
+aimbottoggle:Set(false)
+
+local RmbLock = playertab:CreateToggle({
+    name = "RmbLock",
+    flag = "RmbLockToggle",
+    value = false,
+
+    callback = function(value)
+        RmbLockEnabled = value
+
+        -- Always disconnect the previous connection
+        if RmbLockConnection then
+            RmbLockConnection:Disconnect()
+            RmbLockConnection = nil
+        end
+
+        -- Disabled
+        if not value then
+            return
+        end
+
+        -- Enabled
+        RmbLockConnection = RunService.RenderStepped:Connect(function()
+            if not RmbLockEnabled then
+                return
+            end
+
+            -- Only lock while RMB is held
+            if not UserInputService:IsMouseButtonPressed(
+                Enum.UserInputType.MouseButton2
+            ) then
+                return
+            end
+
+            local mousePosition = UserInputService:GetMouseLocation()
+
+            local closestRoot = nil
+            local closestDistance = math.huge
+
+            for _, targetPlayer in ipairs(Players:GetPlayers()) do
+                if targetPlayer ~= Player and targetPlayer.Character then
+                    local character = targetPlayer.Character
+                    local humanoid = character:FindFirstChildOfClass("Humanoid")
+                    local root = character:FindFirstChild("HumanoidRootPart")
+
+                    if humanoid and humanoid.Health > 0 and root then
+                        local screenPosition, onScreen =
+                            Camera:WorldToViewportPoint(root.Position)
+
+                        if onScreen then
+                            local distance = (
+                                Vector2.new(
+                                    screenPosition.X,
+                                    screenPosition.Y
+                                ) - mousePosition
+                            ).Magnitude
+
+                            if distance < closestDistance then
+                                closestDistance = distance
+                                closestRoot = root
+                            end
+                        end
+                    end
+                end
+            end
+
+            if closestRoot then
+                Camera.CFrame = CFrame.lookAt(
+                    Camera.CFrame.Position,
+                    closestRoot.Position
+                )
+            end
+        end)
+    end,
+})
+
+RmbLock:Set(false)
 
 --// UTILITIES
 
@@ -434,7 +657,7 @@ utilitytab:CreateButton({
 
     callback = function()
         loadstring(game:HttpGet(
-            "https://gitlab.com/upio/cobalt/-/releases/permalink/latest/downloads/Cobalt.luau"
+            "https://raw.githubusercontent.com/infyiff/backup/main/SimpleSpyV3/main.lua"
         ))()
     end,
 })
