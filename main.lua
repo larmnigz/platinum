@@ -7,6 +7,12 @@ local window = Rayfield:CreateWindow({
     subtitle = "By PluvWaffen.cc",
     sidebarLayout = true,
     theme = "default",
+    configuration = {
+        autoSave = true,
+        autoLoad = false,
+        fileName = "Autosave",
+        customFolder = "PlatinumConfig",
+    },
 })
 
 --// Services
@@ -23,11 +29,17 @@ local Camera = Workspace.CurrentCamera
 local AimbotConnection
 local RmbLockEnabled = false
 local RmbLockConnection = nil
+local RmbLockTeamCheck = false
+local RmbLockWallCheck = false
+
+local savefilename = "" 
+local loadfilename = ""
 
 local selectedTeamInstances = {}
 local PlayerAimbotInstances = {}
 local activeTeamHighlights = {}
 local selectedlimb = "Head"
+local rmblockselectedlimb = "Head"
 
 local selectedPlayerInstances = {}
 local activePlayerHighlights = {}
@@ -242,9 +254,11 @@ local servertab = window:CreateTab({
 
 --// SYSTEM
 
+systemtab:CreateDivider({ text = "Application" })
+
 local console = systemtab:CreateConsole({
     name = "Console",
-    text = [[Platinum Console 1.0.1]],
+    text = [[Platinum Console 1.0.2]],
     follow = true,
     maxLines = 400,
 })
@@ -285,6 +299,46 @@ systemtab:CreateButton({
     else
         TeleportService:TeleportToPlaceInstance(PlaceId, JobId, Players.LocalPlayer, nil, data)
     end
+    end,
+})
+
+systemtab:CreateDivider({ text = "Configuration" })
+
+systemtab:CreateInput({
+    name = "Save File",
+    numeric = false,
+    value = "",
+    placeholder = "Enter a file name",
+    callback = function(text)
+        savefilename = text
+    end,
+})
+
+systemtab:CreateInput({
+    name = "Load File",
+    numeric = false,
+    value = "",
+    placeholder = "Enter a file name",
+    callback = function(text)
+        loadfilename = text
+    end,
+})
+
+systemtab:CreateButton({
+    name = "Save File",
+    callback = function()
+        window:Save(savefilename)
+        window:Notify({ title = "Saved file", content = "Saved your config in PlatinumConfig." })
+        console:Append("Saved file")
+    end,
+})
+
+systemtab:CreateButton({
+    name = "Load File",
+    callback = function()
+        window:Load(loadfilename)
+        window:Notify({ title = "Loaded file", content = "Loaded your config." })
+        console:Append("Loaded file")
     end,
 })
 
@@ -422,13 +476,12 @@ playertab:CreateInput({
 playertab:CreateInput({
     name = "Jumppower",
     numeric = true,
-    value = "16",
+    value = "50",
     placeholder = "Enter a number",
 
     callback = function(text)
         if Player.Character
             and Player.Character:FindFirstChild("Humanoid") then
-
             Player.Character.Humanoid.JumpPower = tonumber(text) or 16
         end
     end,
@@ -516,6 +569,25 @@ local Selectlimbs = playertab:CreateDropdown({
     end,
 })
 
+local RmblockSelectlimbs = playertab:CreateDropdown({
+    Name = "RmbLock Target Player Parts",
+    Options = { "Head", "HumanoidRootPart" },
+    CurrentOption = { "Head" },
+    MultipleOptions = false,
+
+    Callback = function(selected)
+        if typeof(selected) == "table" then
+            rmblockselectedlimb = selected[1]
+        elseif typeof(selected) == "string" then
+            rmblockselectedlimb = selected
+        end
+
+        console:Append(
+            "Rmblock Target part: " .. tostring(selectedlimb)
+        )
+    end,
+})
+
 local aimbottoggle = playertab:CreateToggle({
     Name = "Target aimbot",
     Flag = "TargetAimbot",
@@ -564,6 +636,26 @@ local aimbottoggle = playertab:CreateToggle({
 
 aimbottoggle:Set(false)
 
+local RmbLockTeamCheck = playertab:CreateToggle({
+    name = "RmbLock Team Check",
+    flag = "RmbLockTeamCheck",
+    value = false,
+
+    callback = function(value)
+        RmbLockTeamCheck = value
+    end,
+})
+
+local RmbLockWallCheck = playertab:CreateToggle({
+    name = "RmbLock Wall Check",
+    flag = "RmbLockWallCheck",
+    value = false,
+
+    callback = function(value)
+        RmbLockWallCheck = value
+    end,
+})
+
 local RmbLock = playertab:CreateToggle({
     name = "RmbLock",
     flag = "RmbLockToggle",
@@ -572,24 +664,20 @@ local RmbLock = playertab:CreateToggle({
     callback = function(value)
         RmbLockEnabled = value
 
-        -- Always disconnect the previous connection
         if RmbLockConnection then
             RmbLockConnection:Disconnect()
             RmbLockConnection = nil
         end
 
-        -- Disabled
         if not value then
             return
         end
 
-        -- Enabled
         RmbLockConnection = RunService.RenderStepped:Connect(function()
             if not RmbLockEnabled then
                 return
             end
 
-            -- Only lock while RMB is held
             if not UserInputService:IsMouseButtonPressed(
                 Enum.UserInputType.MouseButton2
             ) then
@@ -598,18 +686,52 @@ local RmbLock = playertab:CreateToggle({
 
             local mousePosition = UserInputService:GetMouseLocation()
 
-            local closestRoot = nil
+            local closestPart = nil
             local closestDistance = math.huge
 
             for _, targetPlayer in ipairs(Players:GetPlayers()) do
                 if targetPlayer ~= Player and targetPlayer.Character then
+
+                    --// Team Check
+                    if RmbLockTeamCheck and targetPlayer.Team == Player.Team then
+                        continue
+                    end
+
                     local character = targetPlayer.Character
                     local humanoid = character:FindFirstChildOfClass("Humanoid")
-                    local root = character:FindFirstChild("HumanoidRootPart")
 
-                    if humanoid and humanoid.Health > 0 and root then
+                    --// Selected Target Part
+                    local targetPart = character:FindFirstChild(rmblockselectedlimb)
+
+                    if humanoid and humanoid.Health > 0 and targetPart then
+
+                        --// Wall Check
+                        if RmbLockWallCheck then
+                            local origin = Camera.CFrame.Position
+                            local direction = targetPart.Position - origin
+
+                            local rayParams = RaycastParams.new()
+                            rayParams.FilterType = Enum.RaycastFilterType.Exclude
+                            rayParams.FilterDescendantsInstances = {
+                                Player.Character
+                            }
+                            rayParams.IgnoreWater = true
+
+                            local result = Workspace:Raycast(
+                                origin,
+                                direction,
+                                rayParams
+                            )
+
+                            -- Something is blocking the target
+                            if result and not result.Instance:IsDescendantOf(character) then
+                                continue
+                            end
+                        end
+
+                        --// Get screen position of selected limb
                         local screenPosition, onScreen =
-                            Camera:WorldToViewportPoint(root.Position)
+                            Camera:WorldToViewportPoint(targetPart.Position)
 
                         if onScreen then
                             local distance = (
@@ -621,17 +743,18 @@ local RmbLock = playertab:CreateToggle({
 
                             if distance < closestDistance then
                                 closestDistance = distance
-                                closestRoot = root
+                                closestPart = targetPart
                             end
                         end
                     end
                 end
             end
 
-            if closestRoot then
+            --// Aim at closest valid target
+            if closestPart then
                 Camera.CFrame = CFrame.lookAt(
                     Camera.CFrame.Position,
-                    closestRoot.Position
+                    closestPart.Position
                 )
             end
         end)
@@ -897,6 +1020,8 @@ end)
 
 --// SERVER
 
+servertab:CreateDivider({ text = "Game" })
+
 servertab:CreateButton({
     name = "SaveInstance()",
 
@@ -926,4 +1051,30 @@ servertab:CreateButton({
     end,
 })
 
+servertab:CreateInput({
+    name = "Max players",
+    numeric = true,
+    value = "16",
+    placeholder = "Enter a number",
+    callback = function(text)
+        print("Committed:", text)
+    end,
+})
+
+servertab:CreateDivider({ text = "Workspace" })
+
+local renderingtoggle = servertab:CreateToggle({
+    name = "3D Rendering Toggle",
+    flag = "RenderingToggle",
+    value = true,
+    callback = function(value)
+        RunService:Set3dRenderingEnabled(value)
+    end,
+})
+
+renderingtoggle:Set(true)
+
+
+
 console:Append("loaded all elements")
+
