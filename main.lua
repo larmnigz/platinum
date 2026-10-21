@@ -36,6 +36,7 @@ local savefilename = ""
 local loadfilename = ""
 
 local selectedTeamInstances = {}
+local selectedignoreTeamInstances = {}
 local PlayerAimbotInstances = {}
 local activeTeamHighlights = {}
 local selectedlimb = "Head"
@@ -225,6 +226,23 @@ local function monitorPlayer(player)
     end)
 end
 
+local function isIgnoredRmbLockTeam(targetPlayer)
+    local targetTeam = targetPlayer.Team
+
+    if not targetTeam then
+        return false
+    end
+
+    for _, ignoredTeam in ipairs(selectedignoreTeamInstances) do
+        if targetTeam == ignoredTeam then
+            return true
+        end
+    end
+
+    return false
+end
+
+
 --// TABS
 
 local systemtab = window:CreateTab({
@@ -239,8 +257,6 @@ local playertab = window:CreateTab({
 
 local visualtab = window:CreateTab({
     name = "Visual",
-    icon = 93364949241311
-})
 
 local utilitytab = window:CreateTab({
     name = "Utilities",
@@ -588,6 +604,46 @@ local RmblockSelectlimbs = playertab:CreateDropdown({
     end,
 })
 
+local IgnoreTeamDropdown = playertab:CreateDropdown({
+    Name = "RmbLock Ignore Teams",
+    MultiSelect = true,
+    Options = getTeamNames(),
+    CurrentOption = {},
+
+    Callback = function(selected)
+        table.clear(selectedignoreTeamInstances)
+
+        if typeof(selected) == "table" then
+            for _, teamName in ipairs(selected) do
+                local teamInstance = Teams:FindFirstChild(teamName)
+
+                if teamInstance then
+                    table.insert(
+                        selectedignoreTeamInstances,
+                        teamInstance
+                    )
+                end
+            end
+
+        elseif typeof(selected) == "string" then
+            local teamInstance = Teams:FindFirstChild(selected)
+
+            if teamInstance then
+                table.insert(
+                    selectedignoreTeamInstances,
+                    teamInstance
+                )
+            end
+        end
+
+        console:Append(
+            "RmbLock ignored teams: "
+                .. tostring(#selectedignoreTeamInstances)
+        )
+    end,
+})
+
+
 local aimbottoggle = playertab:CreateToggle({
     Name = "Target aimbot",
     Flag = "TargetAimbot",
@@ -664,86 +720,126 @@ local RmbLock = playertab:CreateToggle({
     callback = function(value)
         RmbLockEnabled = value
 
+        --// Stop previous connection
         if RmbLockConnection then
             RmbLockConnection:Disconnect()
             RmbLockConnection = nil
         end
 
+        --// Disabled
         if not value then
             return
         end
 
+        --// Enabled
         RmbLockConnection = RunService.RenderStepped:Connect(function()
+
             if not RmbLockEnabled then
                 return
             end
 
+            --// Only lock while RMB is held
             if not UserInputService:IsMouseButtonPressed(
                 Enum.UserInputType.MouseButton2
             ) then
                 return
             end
 
-            local mousePosition = UserInputService:GetMouseLocation()
+            local mousePosition =
+                UserInputService:GetMouseLocation()
 
             local closestPart = nil
             local closestDistance = math.huge
 
             for _, targetPlayer in ipairs(Players:GetPlayers()) do
-                if targetPlayer ~= Player and targetPlayer.Character then
 
-                    --// Team Check
-                    if RmbLockTeamCheck and targetPlayer.Team == Player.Team then
+                if targetPlayer ~= Player
+                    and targetPlayer.Character then
+
+                    --// Ignore selected teams
+                    if isIgnoredRmbLockTeam(targetPlayer) then
+                        continue
+                    end
+
+                    --// Optional same-team check
+                    if RmbLockTeamCheck
+                        and targetPlayer.Team == Player.Team then
                         continue
                     end
 
                     local character = targetPlayer.Character
-                    local humanoid = character:FindFirstChildOfClass("Humanoid")
 
-                    --// Selected Target Part
-                    local targetPart = character:FindFirstChild(rmblockselectedlimb)
+                    local humanoid =
+                        character:FindFirstChildOfClass("Humanoid")
 
-                    if humanoid and humanoid.Health > 0 and targetPart then
+                    --// Use selected limb
+                    local targetPart =
+                        character:FindFirstChild(
+                            rmblockselectedlimb
+                        )
+
+                    if humanoid
+                        and humanoid.Health > 0
+                        and targetPart then
 
                         --// Wall Check
                         if RmbLockWallCheck then
-                            local origin = Camera.CFrame.Position
-                            local direction = targetPart.Position - origin
 
-                            local rayParams = RaycastParams.new()
-                            rayParams.FilterType = Enum.RaycastFilterType.Exclude
+                            local origin =
+                                Camera.CFrame.Position
+
+                            local direction =
+                                targetPart.Position - origin
+
+                            local rayParams =
+                                RaycastParams.new()
+
+                            rayParams.FilterType =
+                                Enum.RaycastFilterType.Exclude
+
                             rayParams.FilterDescendantsInstances = {
                                 Player.Character
                             }
+
                             rayParams.IgnoreWater = true
 
-                            local result = Workspace:Raycast(
-                                origin,
-                                direction,
-                                rayParams
-                            )
+                            local result =
+                                Workspace:Raycast(
+                                    origin,
+                                    direction,
+                                    rayParams
+                                )
 
-                            -- Something is blocking the target
-                            if result and not result.Instance:IsDescendantOf(character) then
+                            --// Something is blocking target
+                            if result
+                                and not result.Instance
+                                    :IsDescendantOf(character) then
                                 continue
                             end
                         end
 
-                        --// Get screen position of selected limb
+                        --// Convert target limb to screen position
                         local screenPosition, onScreen =
-                            Camera:WorldToViewportPoint(targetPart.Position)
+                            Camera:WorldToViewportPoint(
+                                targetPart.Position
+                            )
 
                         if onScreen then
-                            local distance = (
-                                Vector2.new(
-                                    screenPosition.X,
-                                    screenPosition.Y
-                                ) - mousePosition
-                            ).Magnitude
 
-                            if distance < closestDistance then
-                                closestDistance = distance
-                                closestPart = targetPart
+                            local screenDistance =
+                                (
+                                    Vector2.new(
+                                        screenPosition.X,
+                                        screenPosition.Y
+                                    ) - mousePosition
+                                ).Magnitude
+
+                            if screenDistance < closestDistance then
+                                closestDistance =
+                                    screenDistance
+
+                                closestPart =
+                                    targetPart
                             end
                         end
                     end
